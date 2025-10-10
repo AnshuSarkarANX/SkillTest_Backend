@@ -1,5 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const https = require("https");
+const fs = require("fs");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -9,7 +11,10 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://gmqxl3nc-5173.inc1.devtunnels.ms",
+    ],
     credentials: true,
   })
 );
@@ -56,6 +61,11 @@ const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const serverOptions = {
+  key: fs.readFileSync("./server.key"),
+  cert: fs.readFileSync("./server.cert"),
+};
+
+https.createServer(serverOptions, app).listen(PORT, () => {
+  console.log(`HTTPS Server running on port ${PORT}`);
 });
