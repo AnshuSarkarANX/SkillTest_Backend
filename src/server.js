@@ -19,8 +19,7 @@ app.use(
   })
 );
 
-// Import the test model
-const Test = require("./models/Test");
+
 
 // Connect to MongoDB
 mongoose
@@ -28,23 +27,6 @@ mongoose
   .then(() => console.log("MongoDB Connected Successfully"))
   .catch((err) => console.log("MongoDB Connection Error:", err));
 
-// Test route to insert data
-app.post("/test", async (req, res) => {
-  try {
-    const testData = new Test({
-      name: "John Doe",
-      email: "john@example.com",
-    });
-
-    const savedData = await testData.save();
-    res.json({
-      message: "Data saved successfully",
-      data: savedData,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Route to fetch all data
 app.get("/test-all", async (req, res) => {
@@ -58,7 +40,9 @@ app.get("/test-all", async (req, res) => {
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 app.use('/api/auth', authRoutes);
+app.use("/api/user", userRoutes);
 
 const PORT = process.env.PORT || 3000;
 const serverOptions = {
