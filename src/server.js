@@ -5,6 +5,7 @@ const fs = require("fs");
 const cors = require("cors");
 require("dotenv").config();
 
+
 const app = express();
 
 // Middleware
@@ -18,6 +19,7 @@ app.use(
     credentials: true,
   })
 );
+
 
 
 
@@ -43,6 +45,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 app.use('/api/auth', authRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/ai", require("./routes/aiRoutes.js"));
 
 const PORT = process.env.PORT || 3000;
 const serverOptions = {
