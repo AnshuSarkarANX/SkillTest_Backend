@@ -12,14 +12,9 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://gmqxl3nc-5173.inc1.devtunnels.ms",
-    ],
-    credentials: true,
+    origin: "*",
   })
 );
-
 
 
 
