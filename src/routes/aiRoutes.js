@@ -5,5 +5,9 @@ const aiController = require("../controllers/AiController.js")
 
 router.post("/generate-skills", aiController.generateContent);
 router.post("/parse-cv", upload.single("cv"), aiController.parseCVController);
+router.get(
+  "/generate-questions",
+  aiController.generateCompleteTestWithProgress
+);
 
 module.exports = router
