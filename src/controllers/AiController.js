@@ -250,8 +250,7 @@ You must create COMPLETELY DIFFERENT questions covering OTHER aspects of ${skill
 Ensure maximum variety in topics, scenarios, and problem types.
 DO NOT create similar variations of previous questions.
 `;
-      }
-
+  }
       const prompt = `
 specialization: ${specialization ? specialization : ""},
 qualification: ${qualification ? qualification : ""},
