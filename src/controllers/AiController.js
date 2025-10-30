@@ -476,4 +476,217 @@ Return format:
   }
 };
 
+exports.evaluateTextAnswers = async (req, res) => {
+  const { text_responses, user_id, test_id } = req.body;
+
+  // Validate input
+  if (
+    !text_responses ||
+    !Array.isArray(text_responses) ||
+    text_responses.length === 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: "text_responses array is required and cannot be empty",
+    });
+  }
+
+  try {
+    // Process all text responses in parallel for better performance
+    const evaluationPromises = text_responses.map(async (response) => {
+      const {
+        question_sn,
+        question,
+        answer,
+        points: max_points,
+        difficulty,
+        evaluation_rubric,
+        max_words,
+      } = response;
+
+      // Parse answer if it's stringified
+      const userAnswer =
+        typeof answer === "string" ? JSON.parse(answer) : answer;
+
+      // Check for empty or very short answers
+      const wordCount = userAnswer.trim().split(/\s+/).length;
+      if (wordCount < 10) {
+        return {
+          question_sn,
+          total_score: 0,
+          max_score: max_points,
+          word_count: wordCount,
+          criterion_scores: evaluation_rubric.criteria.map((criterion) => ({
+            criterion: criterion.criterion,
+            score: 0,
+            max_score: Math.round((max_points * criterion.weight) / 100),
+            feedback: "Answer is too short or empty.",
+          })),
+          overall_feedback:
+            "Answer is insufficient. Please provide a detailed explanation.",
+          strengths: [],
+          improvements: [
+            "Provide a more comprehensive answer",
+            "Address all aspects of the question",
+          ],
+        };
+      }
+
+      // Create evaluation prompt
+      const prompt = `You are an expert evaluator for ${difficulty} level questions.
+
+QUESTION:
+${question}
+
+STUDENT'S ANSWER:
+${userAnswer}
+
+EVALUATION CRITERIA:
+${evaluation_rubric.criteria
+  .map(
+    (c, i) =>
+      `${i + 1}. ${c.criterion} (Weight: ${c.weight}%, Max Points: ${Math.round(
+        (max_points * c.weight) / 100
+      )})`
+  )
+  .join("\n")}
+
+MAXIMUM POINTS: ${max_points}
+EXPECTED WORD COUNT: ${max_words || "Not specified"}
+ACTUAL WORD COUNT: ${wordCount}
+
+INSTRUCTIONS:
+1. Evaluate the answer based strictly on the provided criteria
+2. Assign points for each criterion proportional to its weight
+3. Be fair but maintain academic standards
+4. Provide specific, constructive feedback
+5. Identify concrete strengths and areas for improvement
+6. Consider the word count and depth of explanation
+7. **IMPORTANT: Return ALL scores as INTEGERS (whole numbers) - NO DECIMALS**
+
+SCORING GUIDELINES:
+- Excellent (90-100% of criterion points): Comprehensive, accurate, well-explained
+- Good (70-89% of criterion points): Correct with minor gaps
+- Satisfactory (50-69% of criterion points): Basic understanding but incomplete
+- Poor (0-49% of criterion points): Significant gaps or inaccuracies
+
+Return ONLY a JSON object in this exact format (no markdown, no code blocks):
+{
+  "total_score": <INTEGER between 0 and ${max_points}>,
+  "criterion_scores": [
+    {
+      "criterion": "<criterion name>",
+      "score": <INTEGER points earned>,
+      "max_score": <INTEGER max points for this criterion>,
+      "feedback": "<specific feedback explaining the score>"
+    }
+  ],
+  "overall_feedback": "<2-3 sentences of constructive feedback>",
+  "strengths": ["<specific strength 1>", "<specific strength 2>"],
+  "improvements": ["<specific improvement 1>", "<specific improvement 2>"]
+}`;
+
+      // Call Gemini API
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+      const result = await model.generateContent(prompt);
+      let text = result.response.text().trim();
+
+      // COMPLETE REGEX - Remove ALL markdown code block variations
+      // Remove ```
+      text = text.replace(/^```json\s*/i, "");
+      // Remove ```
+      text = text.replace(/^```javascript\s*/i, "");
+      // Remove generic ```
+      text = text.replace(/^```\s*/, "");
+      // Remove ```
+      text = text.replace(/\s*```\s*$/g, "");
+      // Remove any remaining backticks at start or end
+      text = text.replace(/^`+|`+$/g, "");
+      // Trim whitespace
+      text = text.trim();
+
+      let evaluation;
+      try {
+        evaluation = JSON.parse(text);
+
+        // **FORCE ALL SCORES TO BE INTEGERS** (in case AI returns decimals)
+        evaluation.total_score = Math.round(evaluation.total_score);
+        evaluation.criterion_scores = evaluation.criterion_scores.map(
+          (criterion) => ({
+            ...criterion,
+            score: Math.round(criterion.score),
+            max_score: Math.round(criterion.max_score),
+          })
+        );
+      } catch (parseError) {
+        console.error(
+          "JSON Parse Error for question",
+          question_sn,
+          ":",
+          parseError
+        );
+        console.error("Failed text:", text);
+        throw new Error(
+          `Failed to parse AI response for question ${question_sn}`
+        );
+      }
+
+      return {
+        question_sn,
+        max_score: max_points,
+        word_count: wordCount,
+        ...evaluation,
+      };
+    });
+
+    // Wait for all evaluations to complete
+    const evaluations = await Promise.all(evaluationPromises);
+
+    // Calculate total text score (as INTEGER)
+    const totalTextScore = Math.round(
+      evaluations.reduce((sum, ev) => sum + (ev.total_score || 0), 0)
+    );
+    
+    const totalMaxScore = evaluations.reduce(
+      (sum, ev) => sum + ev.max_score,
+      0
+    );
+    
+    // Calculate percentage as INTEGER
+    const percentage =
+      totalMaxScore > 0
+        ? Math.round((totalTextScore / totalMaxScore) * 100)
+        : 0;
+
+    // Prepare response (ALL INTEGERS)
+    const responseData = {
+      success: true,
+      user_id: user_id || null,
+      test_id: test_id || null,
+      evaluation_summary: {
+        total_text_score: totalTextScore,      // INTEGER
+        total_max_score: totalMaxScore,         // INTEGER
+        percentage: percentage,                 // INTEGER
+        questions_evaluated: evaluations.length,
+      },
+      evaluations: evaluations,
+      evaluated_at: new Date().toISOString(),
+    };
+
+    res.json(responseData);
+    
+  } catch (error) {
+    console.error("Text Evaluation Error:", error);
+    console.error("Error stack:", error.stack);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: "Failed to evaluate text answers",
+    });
+  }
+};
+
+
+
 

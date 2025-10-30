@@ -9,5 +9,6 @@ router.get(
   "/generate-questions",
   aiController.generateCompleteTestWithProgress
 );
+router.post("/evaluate-text-answers", aiController.evaluateTextAnswers);
 
 module.exports = router
