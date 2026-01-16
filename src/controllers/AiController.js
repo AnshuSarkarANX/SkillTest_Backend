@@ -24,7 +24,7 @@ Example format:{"softSkills":["skill1","skill2"],"techSkills":["skill1","skill2"
 
   try {
     // Fixed: Correct API usage
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text().trim();
@@ -62,7 +62,7 @@ exports.parseCVController = async (req, res) => {
     fs.unlinkSync(req.file.path);
 
     // Initialize Gemini model - Fixed
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
@@ -360,7 +360,7 @@ Return format:
 }`;
 
       // Call Gemini API for this batch
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
 
@@ -587,7 +587,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
 }`;
 
       // Call Gemini API
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       let text = result.response.text().trim();
 
