@@ -13,7 +13,7 @@ async function sendOTPEmail(email, otp) {
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
-    subject: "Your OTP Code - LearnSnap",
+    subject: "Your OTP Code - SkillTest",
     html: `
       <h2>Email Verification</h2>
       <p>Your OTP code is: <strong>${otp}</strong></p>
