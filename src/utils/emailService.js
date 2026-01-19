@@ -13,10 +13,10 @@ async function sendOTPEmail(email, otp) {
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
-    subject: "Your OTP Code - SkillTest",
+    subject: "SkillTest - Your OTP Code",
     html: `
       <h2>Email Verification</h2>
-      <p>Your OTP code is: <strong>${otp}</strong></p>
+      <p>Your OTP code is: <strong class="text-[#FF6D1F]">${otp}</strong></p>
       <p>This code will expire in 10 minutes.</p>
     `,
   };
