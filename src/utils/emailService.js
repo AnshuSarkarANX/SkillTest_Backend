@@ -15,11 +15,14 @@ async function sendOTPEmail(email, otp) {
     to: email,
     subject: "SkillTest - Your OTP Code",
     html: `
-      <h2>Email Verification</h2>
-      <p>Your OTP code is: <strong class="text-[#FF6D1F]">${otp}</strong></p>
-      <p>This code will expire in 10 minutes.</p>
-    `,
+    <div style="font-family: Arial, sans-serif; padding: 20px;">
+      <h2 style="color: #333;">Email Verification</h2>
+      <p>Your OTP code is: <strong style="color: #FF6D1F; font-size: 18px;">${otp}</strong></p>
+      <p style="color: #666;">This code will expire in 10 minutes.</p>
+    </div>
+  `,
   };
+
 
   try {
     await transporter.sendMail(mailOptions);
