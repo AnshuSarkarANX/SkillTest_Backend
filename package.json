@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@getbrevo/brevo": "^5.0.3",
     "@google/genai": "^1.24.0",
     "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
@@ -19,7 +20,6 @@
     "express": "^5.1.0",
     "mongoose": "^8.19.0",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.7",
     "nodemon": "^3.1.10"
   }
 }
