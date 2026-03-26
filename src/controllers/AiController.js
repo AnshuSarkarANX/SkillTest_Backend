@@ -365,6 +365,7 @@ Return format:
       const response = await result.response;
 
       let text = response.text().trim();
+      
 
       // COMPLETE REGEX - Remove ALL markdown code block variations
       // Remove ```
