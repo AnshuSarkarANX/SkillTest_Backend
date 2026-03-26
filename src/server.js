@@ -29,11 +29,15 @@ mongoose
 app.get("/test-all", async (req, res) => {
   try {
     const allData = await Test.find();
-    res.json(allData);
+    res.status(200).json(allData);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get("/status",(req,res)=>{
+   res.status(200).json({status:"ok✅"})
+})
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
