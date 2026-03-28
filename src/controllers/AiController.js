@@ -143,18 +143,36 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }.`;
 exports.generateCompleteTestWithProgress = async (req, res) => {
   const { specialization, qualification, skill, level } = req.query;
 
+  console.log("🚀 [INIT] generateCompleteTestWithProgress called");
+  console.log("📥 [INIT] Query params received:", {
+    specialization,
+    qualification,
+    skill,
+    level,
+  });
+
   if (!skill || !level) {
+    console.log(
+      "❌ [VALIDATION] Missing required params - skill or level not provided",
+    );
     return res.status(400).json({ error: "Skill and level are required" });
   }
+
+  console.log("✅ [VALIDATION] Params validated successfully");
 
   // Set up SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no"); // Disable Nginx buffering
+  res.setHeader("X-Accel-Buffering", "no");
+  console.log("📡 [SSE] SSE headers set, connection established");
 
   // Helper function to send progress updates
   const sendProgress = (data) => {
+    console.log(
+      `📤 [SSE] Sending event type: "${data.type}"`,
+      JSON.stringify(data, null, 2),
+    );
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
@@ -163,12 +181,17 @@ exports.generateCompleteTestWithProgress = async (req, res) => {
     Intermediate: 15,
     Advanced: 20,
     Expert: 30,
-    Specialist: 40,
   };
 
   const totalQuestions = totalQuestionsByLevel[level];
-  const questionsPerBatch = 20;
+  const questionsPerBatch = 15;
   const totalBatches = Math.ceil(totalQuestions / questionsPerBatch);
+
+  console.log("📊 [CONFIG] Test configuration:");
+  console.log(`   - Level: ${level}`);
+  console.log(`   - Total questions: ${totalQuestions}`);
+  console.log(`   - Questions per batch: ${questionsPerBatch}`);
+  console.log(`   - Total batches needed: ${totalBatches}`);
 
   try {
     let allQuestions = [];
@@ -182,15 +205,29 @@ exports.generateCompleteTestWithProgress = async (req, res) => {
       totalQuestions,
     });
 
+    console.log("🔄 [LOOP] Starting batch generation loop...");
+
     // Internal loop to generate all batches
     for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+      console.log(`\n${"=".repeat(60)}`);
+      console.log(
+        `🔁 [BATCH ${batchNum}/${totalBatches}] Starting batch ${batchNum}`,
+      );
+
       const questionsGenerated = allBatchMetadata.reduce(
         (sum, b) => sum + (b.questions_count || 0),
-        0
+        0,
       );
       const questionsToGenerate = Math.min(
         questionsPerBatch,
-        totalQuestions - questionsGenerated
+        totalQuestions - questionsGenerated,
+      );
+
+      console.log(
+        `📝 [BATCH ${batchNum}] Questions already generated: ${questionsGenerated}`,
+      );
+      console.log(
+        `📝 [BATCH ${batchNum}] Questions to generate in this batch: ${questionsToGenerate}`,
       );
 
       // Send batch start progress
@@ -206,8 +243,16 @@ exports.generateCompleteTestWithProgress = async (req, res) => {
       // Build cumulative context from ALL previous batches
       let cumulativeContext = "";
       if (allBatchMetadata.length > 0) {
+        console.log(
+          `🧠 [BATCH ${batchNum}] Building cumulative context from ${allBatchMetadata.length} previous batch(es)...`,
+        );
+
         const allPreviousQuestions = allBatchMetadata.flatMap(
-          (batch) => batch.questions_summary || []
+          (batch) => batch.questions_summary || [],
+        );
+
+        console.log(
+          `🧠 [BATCH ${batchNum}] Total previous questions to avoid: ${allPreviousQuestions.length}`,
         );
 
         const cumulativeStats = allBatchMetadata.reduce(
@@ -228,13 +273,16 @@ exports.generateCompleteTestWithProgress = async (req, res) => {
             text: 0,
             total_marks: 0,
             total_questions: 0,
-          }
+          },
+        );
+
+        console.log(
+          `📊 [BATCH ${batchNum}] Cumulative stats so far:`,
+          cumulativeStats,
         );
 
         cumulativeContext = `
-CRITICAL: DO NOT REPEAT ANY OF THE FOLLOWING ${
-          allPreviousQuestions.length
-        } QUESTIONS ALREADY GENERATED:
+CRITICAL: DO NOT REPEAT ANY OF THE FOLLOWING ${allPreviousQuestions.length} QUESTIONS ALREADY GENERATED:
 ${allPreviousQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 
 CUMULATIVE STATISTICS FROM ${allBatchMetadata.length} PREVIOUS BATCH(ES):
@@ -250,7 +298,12 @@ You must create COMPLETELY DIFFERENT questions covering OTHER aspects of ${skill
 Ensure maximum variety in topics, scenarios, and problem types.
 DO NOT create similar variations of previous questions.
 `;
-  }
+      } else {
+        console.log(
+          `🧠 [BATCH ${batchNum}] First batch — no cumulative context needed`,
+        );
+      }
+
       const prompt = `
 specialization: ${specialization ? specialization : ""},
 qualification: ${qualification ? qualification : ""},
@@ -359,45 +412,81 @@ Return format:
   }
 }`;
 
+      console.log(
+        `📨 [BATCH ${batchNum}] Prompt built — length: ${prompt.length} characters`,
+      );
+      console.log(`🤖 [BATCH ${batchNum}] Calling Gemini API...`);
+      const geminiCallStart = Date.now();
+
       // Call Gemini API for this batch
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
 
-      let text = response.text().trim();
-      
+      const geminiCallDuration = Date.now() - geminiCallStart;
+      console.log(
+        `✅ [BATCH ${batchNum}] Gemini API responded in ${geminiCallDuration}ms`,
+      );
 
-      // COMPLETE REGEX - Remove ALL markdown code block variations
-      // Remove ```
+      let text = response.text().trim();
+      console.log(
+        `📄 [BATCH ${batchNum}] Raw response length: ${text.length} characters`,
+      );
+      console.log(
+        `📄 [BATCH ${batchNum}] Raw response first 200 chars: ${text.substring(0, 200)}`,
+      );
+      console.log(
+        `📄 [BATCH ${batchNum}] Raw response last 200 chars: ${text.substring(text.length - 200)}`,
+      );
+
+      // Clean markdown code blocks
+      console.log(`🧹 [BATCH ${batchNum}] Cleaning markdown from response...`);
       text = text.replace(/^```json\s*/i, "");
-      // Remove ```
       text = text.replace(/^```javascript\s*/i, "");
-      // Remove generic ```
       text = text.replace(/^```\s*/, "");
-      // Remove ```
       text = text.replace(/\s*```\s*$/g, "");
-      // Remove any remaining backticks at start or end
       text = text.replace(/^`+|`+$/g, "");
-      // Trim whitespace
       text = text.trim();
 
-      console.log("Cleaned text length:", text.length);
-      console.log("First 100 chars:", text.substring(0, 100));
+      console.log(
+        `🧹 [BATCH ${batchNum}] Cleaned text length: ${text.length} characters`,
+      );
+      console.log(
+        `🧹 [BATCH ${batchNum}] Cleaned first 100 chars: ${text.substring(0, 100)}`,
+      );
 
       let batchData;
       try {
+        console.log(`🔍 [BATCH ${batchNum}] Attempting JSON.parse...`);
         batchData = JSON.parse(text);
+        console.log(`✅ [BATCH ${batchNum}] JSON parsed successfully`);
+        console.log(
+          `✅ [BATCH ${batchNum}] Questions in this batch: ${batchData.questions?.length}`,
+        );
+        console.log(
+          `✅ [BATCH ${batchNum}] Batch metadata:`,
+          JSON.stringify(batchData.batch_metadata, null, 2),
+        );
       } catch (parseError) {
-        console.error("JSON Parse Error:", parseError);
-        console.error("Failed text:", text);
+        console.error(
+          `❌ [BATCH ${batchNum}] JSON Parse FAILED:`,
+          parseError.message,
+        );
+        console.error(`❌ [BATCH ${batchNum}] Problematic text:`, text);
         throw new Error(`Failed to parse JSON: ${parseError.message}`);
       }
 
       // Add this batch's questions to the complete set
       allQuestions = [...allQuestions, ...batchData.questions];
+      console.log(
+        `➕ [BATCH ${batchNum}] Total questions accumulated so far: ${allQuestions.length}`,
+      );
 
-      // Add this batch's metadata to cumulative array for next iteration
+      // Add this batch's metadata to cumulative array
       allBatchMetadata.push(batchData.batch_metadata);
+      console.log(
+        `➕ [BATCH ${batchNum}] Batch metadata pushed. Total metadata entries: ${allBatchMetadata.length}`,
+      );
 
       // Send batch completion progress
       sendProgress({
@@ -410,15 +499,24 @@ Return format:
         progress: Math.round((batchNum / totalBatches) * 100),
       });
 
-      console.log(
-        `Batch ${batchNum} complete: ${batchData.questions.length} questions generated`
-      );
+      console.log(`🏁 [BATCH ${batchNum}/${totalBatches}] Batch complete ✓`);
 
-      // Small delay between batches to avoid rate limiting
+      // Small delay between batches
       if (batchNum < totalBatches) {
+        console.log(
+          `⏳ [BATCH ${batchNum}] Waiting 500ms before next batch...`,
+        );
         await new Promise((resolve) => setTimeout(resolve, 500));
+        console.log(
+          `⏳ [BATCH ${batchNum}] Delay complete, moving to next batch`,
+        );
       }
     }
+
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(
+      "🎯 [FINAL] All batches complete! Calculating final statistics...",
+    );
 
     // Calculate final cumulative statistics
     const finalStats = allBatchMetadata.reduce(
@@ -430,13 +528,18 @@ Return format:
         text: acc.text + (batch.type_counts?.text || 0),
         total_marks: acc.total_marks + (batch.total_marks || 0),
       }),
-      { easy: 0, medium: 0, hard: 0, mcq: 0, text: 0, total_marks: 0 }
+      { easy: 0, medium: 0, hard: 0, mcq: 0, text: 0, total_marks: 0 },
+    );
+
+    console.log("📊 [FINAL] Final statistics:", finalStats);
+    console.log(
+      "📊 [FINAL] Total questions in allQuestions array:",
+      allQuestions.length,
     );
 
     // Generate unique test ID
-    const testId = `test_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
+    const testId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log("🆔 [FINAL] Generated test ID:", testId);
 
     // Send final completion with complete data
     sendProgress({
@@ -460,11 +563,19 @@ Return format:
       },
     });
 
+    console.log("✅ [FINAL] 'complete' SSE event sent to client");
+    console.log("🔚 [FINAL] Closing SSE connection with res.end()");
+
     // Close the SSE connection
     res.end();
+
+    console.log("🔚 [FINAL] res.end() called — connection closed");
   } catch (error) {
-    console.error("Test Generation Error:", error);
-    console.error("Error stack:", error.stack);
+    console.error(
+      "💥 [ERROR] Unhandled error in generateCompleteTestWithProgress:",
+    );
+    console.error("💥 [ERROR] Message:", error.message);
+    console.error("💥 [ERROR] Stack:", error.stack);
 
     sendProgress({
       type: "error",
@@ -472,6 +583,9 @@ Return format:
       error: error.toString(),
       details: error.stack,
     });
+
+    console.error("💥 [ERROR] Error SSE event sent to client");
+    console.error("💥 [ERROR] Closing connection after error");
 
     res.end();
   }
