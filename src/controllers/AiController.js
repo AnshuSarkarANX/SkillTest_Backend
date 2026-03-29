@@ -141,11 +141,10 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }.`;
 };
 
 exports.generateCompleteTestWithProgress = async (req, res) => {
-  const { specialization, qualification, skill, level } = req.query;
+  const { qualification, skill, level } = req.query;
 
   console.log("🚀 [INIT] generateCompleteTestWithProgress called");
   console.log("📥 [INIT] Query params received:", {
-    specialization,
     qualification,
     skill,
     level,
@@ -235,7 +234,7 @@ exports.generateCompleteTestWithProgress = async (req, res) => {
         type: "batch_start",
         batch: batchNum,
         totalBatches,
-        message: `Generating batch ${batchNum} of ${totalBatches}...`,
+        message: `Generating questions...`,
         questionsInBatch: questionsToGenerate,
         progress: Math.round(((batchNum - 1) / totalBatches) * 100),
       });
@@ -305,7 +304,6 @@ DO NOT create similar variations of previous questions.
       }
 
       const prompt = `
-specialization: ${specialization ? specialization : ""},
 qualification: ${qualification ? qualification : ""},
 skill: ${skill},
 level: ${level},
@@ -550,7 +548,6 @@ Return format:
         test_id: testId,
         level,
         skill,
-        specialization,
         qualification,
         total_questions: allQuestions.length,
         total_batches: totalBatches,
