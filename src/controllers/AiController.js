@@ -64,7 +64,7 @@ exports.parseCVController = async (req, res) => {
     // Initialize Gemini model - Fixed
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
+const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
 Extract:
 - gender: Infer from name or pronouns (male/female/other)
@@ -75,6 +75,16 @@ Extract:
 - softSkills: Array of soft skills
 - techSkills: Array of technical skills
 
+STRICT RULES FOR SKILLS EXTRACTION:
+1. Each skill must be a SINGLE, ATOMIC skill — one word or one short phrase only.
+2. NEVER combine multiple skills into one entry.
+3. NEVER use separators like "/" or "," or "&" or "and" inside a skill entry.
+4. NEVER use parentheses to group related skills under one entry.
+5. If a skill group is mentioned (e.g. "React, Angular, Vue"), split them into separate entries: ["React", "Angular", "Vue"].
+6. Tech skills should be specific tools/languages/frameworks (e.g. "React", "Python", "MongoDB", "Docker").
+7. Soft skills should be specific traits (e.g. "Communication", "Time Management", "Leadership", "Teamwork").
+8. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
+
 Return ONLY this JSON structure:
 {
   "gender": "string",
@@ -82,11 +92,11 @@ Return ONLY this JSON structure:
   "dob": "YYYY-MM-DD or null",
   "qualification": "string",
   "specialization": "string",
-  "softSkills": ["skill1", "skill2"],
-  "techSkills": ["skill1", "skill2"]
+  "softSkills": ["Communication", "Leadership", "Time Management"],
+  "techSkills": ["React", "Node.js", "MongoDB", "Python"]
 }
 
-IMPORTANT: Response must be valid JSON starting with { and ending with }.`;
+IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.`;
 
     // Generate content with PDF - Fixed
     const result = await model.generateContent([
