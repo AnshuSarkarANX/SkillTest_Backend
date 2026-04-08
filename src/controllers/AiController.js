@@ -20,6 +20,9 @@ exports.generateContent = async (req, res) => {
 
 CRITICAL: Return ONLY raw JSON without markdown code blocks, backticks, or any other text. The response must start with { and end with }.
 
+SKILL FILTER RULE:
+Only include widely recognized, well-defined skills that have enough depth for generating at least 30 meaningful questions (MCQ + text-based). Do NOT include vague, generic, or low-depth skills.
+
 Example format:{"softSkills":["skill1","skill2"],"techSkills":["skill1","skill2"]}`;
 
   try {
@@ -83,6 +86,7 @@ STRICT RULES FOR SKILLS EXTRACTION:
 6. Tech skills should be specific tools/languages/frameworks (e.g. "React", "Python", "MongoDB", "Docker").
 7. Soft skills should be specific traits (e.g. "Communication", "Time Management", "Leadership", "Teamwork").
 8. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
+9. ONLY include a skill (in both softSkills and techSkills) if you are confident that at least 30 meaningful questions (mix of MCQ and text-answer) can be generated for that skill. If not, exclude the skill.
 
 Return ONLY this JSON structure:
 {
