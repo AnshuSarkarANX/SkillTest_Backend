@@ -148,7 +148,7 @@ async function callGemini(prompt,userId = null) {
   let lastError;
 
   for (let attempt = 0; attempt < OWN_KEYS.length; attempt++) {
-    const { key, index } = getActiveOwnKey();
+    const { key, index } = await getActiveOwnKey();
 
     if (!key) {
       throw new Error("No Gemini API keys configured on the server.");
@@ -166,7 +166,7 @@ async function callGemini(prompt,userId = null) {
         console.log(`[GeminiClient] Sticky key set to index ${index}`);
       }
 
-      return result.response.text().trim();
+      return result
     } catch (error) {
       lastError = error;
       console.warn(

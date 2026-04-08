@@ -32,7 +32,6 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       trim: true,
-      required:true
     },
     qualification: {
       type: String,

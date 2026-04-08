@@ -64,8 +64,6 @@ exports.parseCVController = async (req, res) => {
     // Delete uploaded file
     fs.unlinkSync(req.file.path);
 
-    // Initialize Gemini model - Fixed
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
