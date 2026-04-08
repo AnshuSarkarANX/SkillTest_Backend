@@ -40,7 +40,8 @@ Example format:{"softSkills":["skill1","skill2"],"techSkills":["skill1","skill2"
     console.error("Gemini API Error:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: "Failed to generate skills",
+      details: "Server Error",
     });
   }
 };
@@ -67,9 +68,7 @@ exports.parseCVController = async (req, res) => {
 const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
 Extract:
-- gender: Infer from name or pronouns (male/female/other)
 - fullName: Complete name
-- dob: Date of birth in YYYY-MM-DD format or null
 - qualification: One of: "high_school", "college", "bachelors", "masters", "phd"
 - specialization: Field of study
 - softSkills: Array of soft skills
@@ -87,9 +86,7 @@ STRICT RULES FOR SKILLS EXTRACTION:
 
 Return ONLY this JSON structure:
 {
-  "gender": "string",
   "fullName": "string",
-  "dob": "YYYY-MM-DD or null",
   "qualification": "string",
   "specialization": "string",
   "softSkills": ["Communication", "Leadership", "Time Management"],
@@ -145,7 +142,8 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
 
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to parse CV",
+      error: "Failed to parse CV",
+      details: "Server Error",
     });
   }
 };
@@ -804,7 +802,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     res.status(500).json({
       success: false,
       error: error.message,
-      details: "Failed to evaluate text answers",
+      details: "Server Error",
     });
   }
 };
