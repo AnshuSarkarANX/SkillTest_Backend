@@ -10,10 +10,6 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    phone: {
-      type: String,
-      sparse: true,
-    },
     isVerified: {
       type: Boolean,
       default: false,
@@ -28,16 +24,15 @@ const userSchema = new mongoose.Schema(
       required: false,
       trim: true,
     },
-    gender: {
+    userType: {
       type: String,
-      // You can add enum: ["male", "female", "other"] for restriction if needed
+      enum: ["free", "paid"],
+      default: "paid",
     },
     name: {
       type: String,
       trim: true,
-    },
-    dob: {
-      type: Date,
+      required:true
     },
     qualification: {
       type: String,
@@ -56,7 +51,7 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("User", userSchema);

@@ -2,6 +2,7 @@ const User = require("../models/User");
 const OTP = require("../models/OTP");
 const { generateOTP } = require("../utils/otpGenerator");
 const { sendOTPEmail } = require("../utils/emailService");
+const { generateToken } = require("../utils/jwt");
 
 // Request OTP
 exports.requestOTP = async (req, res) => {
@@ -56,8 +57,6 @@ exports.verifyOTP = async (req, res) => {
     // console.log("Found OTP record:", otpRecord);
 
     if (!otpRecord) {
-        const allOTPs = await OTP.find({ email });
-        // console.log("All OTPs for this email:", allOTPs);
       return res.status(400).json({ error: "Invalid or expired OTP" });
     }
 
@@ -70,12 +69,14 @@ exports.verifyOTP = async (req, res) => {
       user.isVerified = true;
       await user.save();
     }
+    const token = generateToken({ email, userId: user._id });
 
     // Delete used OTP
     await OTP.deleteOne({ _id: otpRecord._id });
 
     res.json({
       message: "OTP verified successfully",
+      token,
       user
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai"); // Fixed: Wrong package name
 const fs = require("fs");
 const { existsSync, mkdirSync } = require("fs");
+const { callGemini, storeUserApiKey } = require("../utils/geminiClient");
 
 if (!existsSync("uploads")) {
   mkdirSync("uploads");
@@ -10,7 +11,7 @@ if (!existsSync("uploads")) {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 exports.generateContent = async (req, res) => {
-  const { specialization, qualification } = req.body;
+  const { specialization, qualification, userId } = req.body;
 
   if (!specialization || !qualification) {
     return res.status(400).json({ error: "Specialization and qualification are required" });
@@ -26,9 +27,7 @@ Only include widely recognized, well-defined skills that have enough depth for g
 Example format:{"softSkills":["skill1","skill2"],"techSkills":["skill1","skill2"]}`;
 
   try {
-    // Fixed: Correct API usage
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
+    const result = await callGemini(prompt);
     const response = await result.response;
     let text = response.text().trim();
 
@@ -100,7 +99,7 @@ Return ONLY this JSON structure:
 IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.`;
 
     // Generate content with PDF - Fixed
-    const result = await model.generateContent([
+    const result = await callGemini([
       prompt,
       {
         inlineData: {
@@ -153,7 +152,7 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
 };
 
 exports.generateCompleteTestWithProgress = async (req, res) => {
-  const { qualification, skill, level } = req.query;
+  const { qualification, skill, level,userId = null } = req.query;
 
   console.log("🚀 [INIT] generateCompleteTestWithProgress called");
   console.log("📥 [INIT] Query params received:", {
@@ -430,7 +429,7 @@ Return format:
 
       // Call Gemini API for this batch
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
+      const result = await callGemini(prompt,userId);
       const response = await result.response;
 
       const geminiCallDuration = Date.now() - geminiCallStart;
@@ -601,7 +600,7 @@ Return format:
 };
 
 exports.evaluateTextAnswers = async (req, res) => {
-  const { text_responses, user_id, test_id } = req.body;
+  const { text_responses, test_id, userId = null} = req.body;
 
   // Validate input
   if (
@@ -711,8 +710,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
 }`;
 
       // Call Gemini API
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
+      const result = await callGemini(prompt,userId);
       let text = result.response.text().trim();
 
       // COMPLETE REGEX - Remove ALL markdown code block variations
@@ -785,7 +783,6 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     // Prepare response (ALL INTEGERS)
     const responseData = {
       success: true,
-      user_id: user_id || null,
       test_id: test_id || null,
       evaluation_summary: {
         total_text_score: totalTextScore,      // INTEGER
