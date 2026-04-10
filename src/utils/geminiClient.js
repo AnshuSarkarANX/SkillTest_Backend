@@ -40,17 +40,13 @@ async function getActiveOwnKey() {
   return { key: OWN_KEYS[state.stickyIndex], index: state.stickyIndex };
 }
 
-async function promoteNextKey(failedIndex) {
+async function promoteNextKey(targetIndex) {
   let state = await ApiKeyState.findById("singleton");
-  for (let i = 0; i < OWN_KEYS.length; i++) {
-    if (i !== failedIndex) {
-      state.stickyIndex = i;
-      state.stickySetAt = new Date();
-      await state.save();
-      return true;
-    }
-  }
-  return false;
+  if (!state) state = await ApiKeyState.create({ _id: "singleton" });
+  state.stickyIndex = targetIndex;
+  state.stickySetAt = new Date();
+  await state.save();
+  return true;
 }
 
 // ─── USER KEY ENCRYPTION ───────────────────────────────────────────────────
@@ -122,63 +118,71 @@ async function removeUserApiKey(userId) {
  * @param {string} [options.userId]     - If provided, uses the user's own key
  * @param {string} [options.model]      - Defaults to "gemini-2.5-flash"
  */
-async function callGemini(prompt,userId = null) {
-   const model = "gemini-2.5-flash" 
+async function callGemini(prompt, userId = null) {
+  const model = "gemini-2.5-flash";
 
-  // ── MODE 1: User's own API key ──
   if (userId) {
-    const userKey = getUserApiKey(userId);
-    if (!userKey) {
-      throw new Error(
-        "No API key found for this user. Please provide your Gemini API key.",
-      );
-    }
+    const userKey = await getUserApiKey(userId);
+    if (!userKey) throw new Error("No API key found for this user.");
     const genAI = new GoogleGenerativeAI(userKey);
     const geminiModel = genAI.getGenerativeModel({ model });
     try {
       const result = await geminiModel.generateContent(prompt);
       return result.response.text().trim();
     } catch (error) {
-      // Don't retry with other keys — it's their key, their problem
       throw new Error(`Your API key failed: ${error.message}`);
     }
   }
 
   // ── MODE 2: Own keys with failover ──
   let lastError;
+  const triedIndices = new Set(); // ✅ track failed keys locally this call
 
   for (let attempt = 0; attempt < OWN_KEYS.length; attempt++) {
     const { key, index } = await getActiveOwnKey();
 
-    if (!key) {
-      throw new Error("No Gemini API keys configured on the server.");
+    // ✅ If this key already failed in this call, find a fresh one
+    if (triedIndices.has(index)) {
+      // Find next untried key
+      const nextIndex = OWN_KEYS.findIndex((_, i) => !triedIndices.has(i));
+      if (nextIndex === -1) break; // all keys tried
+      await promoteNextKey(nextIndex); // promote to untried key
+      continue;
     }
+
+    if (!key) throw new Error("No Gemini API keys configured on the server.");
 
     try {
       const genAI = new GoogleGenerativeAI(key);
       const geminiModel = genAI.getGenerativeModel({ model });
       const result = await geminiModel.generateContent(prompt);
 
-      // ✅ Success — lock this key as sticky if not already set
-      if (!keyState.stickySetAt) {
-        keyState.stickyIndex = index;
-        keyState.stickySetAt = Date.now();
+      // Lock sticky key
+      const state = await ApiKeyState.findById("singleton");
+      if (!state.stickySetAt) {
+        state.stickyIndex = index;
+        state.stickySetAt = new Date();
+        await state.save();
         console.log(`[GeminiClient] Sticky key set to index ${index}`);
       }
 
-      return result
+      return result;
     } catch (error) {
       lastError = error;
+      triedIndices.add(index); // ✅ mark this index as failed
       console.warn(
         `[GeminiClient] Key index ${index} failed: ${error.message}`,
       );
-      markKeyFailed(index);
 
-      const hasNext = promoteNextKey(index);
-      if (!hasNext) {
+      // Find next untried index
+      const nextIndex = OWN_KEYS.findIndex((_, i) => !triedIndices.has(i));
+      if (nextIndex === -1) {
         console.error("[GeminiClient] All API keys exhausted.");
         break;
       }
+
+      await promoteNextKey(nextIndex); // ✅ promote to specific untried key
+      console.log(`[GeminiClient] Promoting to key index ${nextIndex}`);
     }
   }
 
