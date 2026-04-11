@@ -150,14 +150,15 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
 };
 
 exports.generateCompleteTestWithProgress = async (req, res) => {
-  const { qualification, skill, level,userId = null } = req.query;
+  const {skill, level} = req.query;
+  const { userType,userId,qualification} = req.user;
 
   console.log("🚀 [INIT] generateCompleteTestWithProgress called");
   console.log("📥 [INIT] Query params received:", {
-    qualification,
     skill,
     level,
   });
+   
 
   if (!skill || !level) {
     console.log(
@@ -427,7 +428,7 @@ Return format:
 
       // Call Gemini API for this batch
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await callGemini(prompt,userId);
+      const result = await callGemini(prompt,userType == "free" ? userId : null);
       const response = await result.response;
 
       const geminiCallDuration = Date.now() - geminiCallStart;
