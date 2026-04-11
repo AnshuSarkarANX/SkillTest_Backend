@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema(
     userType: {
       type: String,
       enum: ["free", "paid"],
-      default: "paid",
+      default: "free",
     },
     name: {
       type: String,
