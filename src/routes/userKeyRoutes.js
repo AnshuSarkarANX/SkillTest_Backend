@@ -1,4 +1,8 @@
 // routes/userKeyRoutes.js
+
+const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
 const {
   storeUserApiKey,
   removeUserApiKey,
@@ -23,6 +27,7 @@ router.post("/set-api-key", authMiddleware, async (req, res) => {
     await storeUserApiKey(req.user.id, apiKey);
     res.json({ success: true, message: "API key stored securely" });
   } catch (err) {
+    console.log(err);
     res.status(500).json({ error: "Failed to store API key" });
   }
 });
@@ -35,3 +40,5 @@ router.delete("/remove-api-key", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to remove API key" });
   }
 });
+
+module.exports = router;

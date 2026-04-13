@@ -46,6 +46,9 @@ app.use('/api/auth', authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/ai", require("./routes/aiRoutes.js"));
 app.use("/api/results", require("./routes/resultRoutes"));
+app.use("/api/user-key", require("./routes/userKeyRoutes"));
+
+
 
 const PORT = process.env.PORT || 3000;
 

@@ -20,6 +20,31 @@ const UserApiKey = require("../models/UserApiKey");
 
 const ApiKeyState = require("../models/ApiKeyState");
 
+ function parseGeminiError(error) {
+  const raw = error.message ?? String(error);
+
+  // 1. Extract HTTP status code (e.g. 400, 403, 429, 500)
+  const statusMatch = raw.match(/\[(\d{3})/);
+  const status = statusMatch ? Number(statusMatch[1]) : (error.status ?? null);
+
+  // 2. Extract human-readable message (between "] " and optional " [{")
+  const msgMatch = raw.match(/\]\s(.+?)(?:\s\[\{|$)/s);
+  const message = msgMatch ? msgMatch[1].trim() : raw;
+
+  // 3. Try to extract and parse the JSON details array (may not always exist)
+  const jsonMatch = raw.match(/(\[\{.+\}\])/s);
+  let reason = null;
+  let details = null;
+  if (jsonMatch) {
+    try {
+      details = JSON.parse(jsonMatch[1]);
+      reason = details[0]?.reason ?? null;
+    } catch (_) {}
+  }
+
+  return { status, message, reason, details };
+}
+
 async function getActiveOwnKey() {
   let state = await ApiKeyState.findById("singleton");
   if (!state) {
@@ -95,21 +120,21 @@ function decryptKey({ encryptedKey, iv, authTag }) {
   async function storeUserApiKey(userId, apiKey) {
     const encrypted = encryptKey(apiKey); // same AES-256-GCM function from before
     await UserApiKey.findOneAndUpdate(
-      { userId },
+      { userId:userId },
       { ...encrypted, updatedAt: new Date() },
       { upsert: true },
     );
   }
 
   async function getUserApiKey(userId) {
-    const stored = await UserApiKey.findOne({ userId });
+    const stored = await UserApiKey.findOne({ userId:userId });
     if (!stored) return null;
     console.log(stored.toObject())
     return decryptKey(stored);
   }
 
   async function removeUserApiKey(userId) {
-    await UserApiKey.deleteOne({ userId });
+    await UserApiKey.deleteOne({ userId:userId });
   }
 
 // ─── CORE CALL FUNCTION ────────────────────────────────────────────────────
@@ -124,7 +149,10 @@ async function callGemini(prompt, userId = null) {
 
   if (userId) {
     const userKey = await getUserApiKey(userId);
-    if (!userKey) throw new Error("No API key found for this user.");
+    if (!userKey)
+      throw new Error(
+        "No API key found for this user. You can set up api key in the account section.",
+      );
     const genAI = new GoogleGenerativeAI(userKey);
     const geminiModel = genAI.getGenerativeModel({ model });
     try {
@@ -197,4 +225,5 @@ module.exports = {
   storeUserApiKey,
   getUserApiKey,
   removeUserApiKey,
+  parseGeminiError,
 };

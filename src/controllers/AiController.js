@@ -1,20 +1,20 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai"); // Fixed: Wrong package name
 const fs = require("fs");
 const { existsSync, mkdirSync } = require("fs");
-const { callGemini, storeUserApiKey } = require("../utils/geminiClient");
+const { callGemini, parseGeminiError } = require("../utils/geminiClient");
 
 if (!existsSync("uploads")) {
   mkdirSync("uploads");
 }
 
 // Initialize with correct package
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 exports.generateContent = async (req, res) => {
   const { specialization, qualification, userId } = req.body;
 
   if (!specialization || !qualification) {
-    return res.status(400).json({ error: "Specialization and qualification are required" });
+    return res
+      .status(400)
+      .json({ error: "Specialization and qualification are required" });
   }
 
   const prompt = `Based on specialization in ${specialization} and highest qualification being ${qualification}, generate a JSON object with two arrays: softSkills and techSkills.
@@ -64,8 +64,7 @@ exports.parseCVController = async (req, res) => {
     // Delete uploaded file
     fs.unlinkSync(req.file.path);
 
-
-const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
+    const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
 Extract:
 - fullName: Complete name
@@ -150,15 +149,14 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
 };
 
 exports.generateCompleteTestWithProgress = async (req, res) => {
-  const {skill, level} = req.query;
-  const { userType,userId,qualification} = req.user;
+  const { skill, level } = req.query;
+  const { userType, id:userId, qualification } = req.user;
 
   console.log("🚀 [INIT] generateCompleteTestWithProgress called");
   console.log("📥 [INIT] Query params received:", {
     skill,
     level,
   });
-   
 
   if (!skill || !level) {
     console.log(
@@ -427,8 +425,11 @@ Return format:
       const geminiCallStart = Date.now();
 
       // Call Gemini API for this batch
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await callGemini(prompt,userType == "free" ? userId : null);
+      const result = await callGemini(
+        prompt,
+        userType == "free" ? userId : null,
+      );
+      console.log("userId:", userId);
       const response = await result.response;
 
       const geminiCallDuration = Date.now() - geminiCallStart;
@@ -584,9 +585,11 @@ Return format:
     console.error("💥 [ERROR] Message:", error.message);
     console.error("💥 [ERROR] Stack:", error.stack);
 
+    parsedError = parseGeminiError(error);
+
     sendProgress({
       type: "error",
-      message: error.message,
+      message: parsedError.message,
       error: error.toString(),
       details: error.stack,
     });
@@ -599,7 +602,7 @@ Return format:
 };
 
 exports.evaluateTextAnswers = async (req, res) => {
-  const { text_responses, test_id, userId = null} = req.body;
+  const { text_responses, test_id, userId = null } = req.body;
 
   // Validate input
   if (
@@ -668,8 +671,8 @@ ${evaluation_rubric.criteria
   .map(
     (c, i) =>
       `${i + 1}. ${c.criterion} (Weight: ${c.weight}%, Max Points: ${Math.round(
-        (max_points * c.weight) / 100
-      )})`
+        (max_points * c.weight) / 100,
+      )})`,
   )
   .join("\n")}
 
@@ -709,7 +712,7 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
 }`;
 
       // Call Gemini API
-      const result = await callGemini(prompt,userId);
+      const result = await callGemini(prompt, userId);
       let text = result.response.text().trim();
 
       // COMPLETE REGEX - Remove ALL markdown code block variations
@@ -737,18 +740,18 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             ...criterion,
             score: Math.round(criterion.score),
             max_score: Math.round(criterion.max_score),
-          })
+          }),
         );
       } catch (parseError) {
         console.error(
           "JSON Parse Error for question",
           question_sn,
           ":",
-          parseError
+          parseError,
         );
         console.error("Failed text:", text);
         throw new Error(
-          `Failed to parse AI response for question ${question_sn}`
+          `Failed to parse AI response for question ${question_sn}`,
         );
       }
 
@@ -765,14 +768,14 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
 
     // Calculate total text score (as INTEGER)
     const totalTextScore = Math.round(
-      evaluations.reduce((sum, ev) => sum + (ev.total_score || 0), 0)
+      evaluations.reduce((sum, ev) => sum + (ev.total_score || 0), 0),
     );
-    
+
     const totalMaxScore = evaluations.reduce(
       (sum, ev) => sum + ev.max_score,
-      0
+      0,
     );
-    
+
     // Calculate percentage as INTEGER
     const percentage =
       totalMaxScore > 0
@@ -784,9 +787,9 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
       success: true,
       test_id: test_id || null,
       evaluation_summary: {
-        total_text_score: totalTextScore,      // INTEGER
-        total_max_score: totalMaxScore,         // INTEGER
-        percentage: percentage,                 // INTEGER
+        total_text_score: totalTextScore, // INTEGER
+        total_max_score: totalMaxScore, // INTEGER
+        percentage: percentage, // INTEGER
         questions_evaluated: evaluations.length,
       },
       evaluations: evaluations,
@@ -794,7 +797,6 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     };
 
     res.json(responseData);
-    
   } catch (error) {
     console.error("Text Evaluation Error:", error);
     console.error("Error stack:", error.stack);
@@ -806,7 +808,3 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     });
   }
 };
-
-
-
-

@@ -15,7 +15,7 @@ const authMiddleware = async (req, res, next) => {
 
     const user = await User.findById(decoded.userId);
     req.user = {
-      userId: user._id,
+      id: user._id,
       email: user.email,
       userType: user.userType,
       specialization: user.specialization,

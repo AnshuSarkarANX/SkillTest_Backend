@@ -3,7 +3,7 @@ const TestResult = require("../models/TestResult");
 
 exports.saveResult = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const testResult = req.body;
 
     // Save full result with TTL
@@ -43,7 +43,7 @@ exports.saveResult = async (req, res) => {
 exports.getResult = async (req, res) => {
   try {
     const { testResultId } = req.params;
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const result = await TestResult.findOne({
       _id: testResultId,
@@ -63,7 +63,7 @@ exports.getResult = async (req, res) => {
 
 exports.getHistory = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const metrics = await TestMetrics.find({ userId })
       .sort({ createdAt: -1 })
