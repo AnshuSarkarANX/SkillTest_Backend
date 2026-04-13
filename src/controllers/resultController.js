@@ -64,10 +64,13 @@ exports.getResult = async (req, res) => {
 exports.getHistory = async (req, res) => {
   try {
     const userId = req.user.id;
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
 
-    const metrics = await TestMetrics.find({ userId })
-      .sort({ createdAt: -1 })
-      .lean();
+    const query = TestMetrics.find({ userId }).sort({ createdAt: -1 }).lean();
+
+    if (limit) query.limit(limit);
+
+    const metrics = await query;
 
     // Check which full results still exist
     const resultIds = metrics
