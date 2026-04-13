@@ -92,24 +92,25 @@ function decryptKey({ encryptedKey, iv, authTag }) {
 // Call this when the user provides their key (e.g. from a settings endpoint)
 
 
-async function storeUserApiKey(userId, apiKey) {
-  const encrypted = encryptKey(apiKey); // same AES-256-GCM function from before
-  await UserApiKey.findOneAndUpdate(
-    { userId },
-    { ...encrypted, updatedAt: new Date() },
-    { upsert: true },
-  );
-}
+  async function storeUserApiKey(userId, apiKey) {
+    const encrypted = encryptKey(apiKey); // same AES-256-GCM function from before
+    await UserApiKey.findOneAndUpdate(
+      { userId },
+      { ...encrypted, updatedAt: new Date() },
+      { upsert: true },
+    );
+  }
 
-async function getUserApiKey(userId) {
-  const stored = await UserApiKey.findOne({ userId });
-  if (!stored) return null;
-  return decryptKey(stored);
-}
+  async function getUserApiKey(userId) {
+    const stored = await UserApiKey.findOne({ userId });
+    if (!stored) return null;
+    console.log(stored.toObject())
+    return decryptKey(stored);
+  }
 
-async function removeUserApiKey(userId) {
-  await UserApiKey.deleteOne({ userId });
-}
+  async function removeUserApiKey(userId) {
+    await UserApiKey.deleteOne({ userId });
+  }
 
 // ─── CORE CALL FUNCTION ────────────────────────────────────────────────────
 /**
