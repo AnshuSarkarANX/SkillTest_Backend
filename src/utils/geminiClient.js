@@ -157,7 +157,7 @@ async function callGemini(prompt, userId = null) {
     const geminiModel = genAI.getGenerativeModel({ model });
     try {
       const result = await geminiModel.generateContent(prompt);
-      return result.response.text().trim();
+      return result;
     } catch (error) {
       throw new Error(`Your API key failed: ${error.message}`);
     }
