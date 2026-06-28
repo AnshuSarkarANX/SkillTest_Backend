@@ -63,8 +63,10 @@ exports.parseCVController = async (req, res) => {
 
     // Delete uploaded file
     fs.unlinkSync(req.file.path);
+    
+    const monthYear = new Date().getMonth() + 1 + " / " + new Date().getFullYear();
 
-    const prompt = `Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
+    const prompt = `{Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
 
 Extract:
 - fullName: Complete name
@@ -72,7 +74,7 @@ Extract:
 - specialization: Field of study
 - softSkills: Array of soft skills
 - techSkills: Array of technical skills
-
+- experiences: Array of experience objects, each containing:{ companyName, role, timePeriod, description}
 STRICT RULES FOR SKILLS EXTRACTION:
 1. Each skill must be a SINGLE, ATOMIC skill — one word or one short phrase only.
 2. NEVER combine multiple skills into one entry.
@@ -84,6 +86,9 @@ STRICT RULES FOR SKILLS EXTRACTION:
 8. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
 9. ONLY include a skill (in both softSkills and techSkills) if you are confident that at least 30 meaningful questions (mix of MCQ and text-answer) can be generated for that skill. If not, exclude the skill.
 
+Rules For Experiences Extraction:
+1. If the time period is mentioned as "Jan,2026 -  present"  then take  present as todays date = ${monthYear} and calculate the time period from starting month to present month.
+
 Return ONLY this JSON structure:
 {
   "fullName": "string",
@@ -94,7 +99,7 @@ Return ONLY this JSON structure:
   "experiences": [{ "companyName": "abc company", "role": "SDE-I", "timePeriod": "1 year 2 months", "description": ["Led a team of developers to deliver a web application.", "Created a new feature." ] }]
 }
 
-IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.`;
+IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.}`;
 
     // Generate content with PDF - Fixed
     const result = await callGemini([

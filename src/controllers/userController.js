@@ -15,7 +15,7 @@ exports.getUserProfile = async (req, res) => {
 };
 exports.createUserProfile = async (req, res) => {
   try {
-    const { fullName, specialization, softSkills, techSkills, qualification,email } = req.body;
+    const { fullName, specialization, softSkills, techSkills, qualification,email,experiences } = req.body;
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -27,6 +27,7 @@ exports.createUserProfile = async (req, res) => {
     user.softSkills = softSkills;
     user.techSkills = techSkills;
     user.qualification = qualification;
+    user.experiences = experiences || []; // Set experiences to an empty array if not provided
     user.FTL = false;
 
     await user.save();

@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-import experienceItemSchema from "./ExperienceItem.js";
+const experienceItemSchema = require("./ExperienceItem.js");
 
 
 const userSchema = new mongoose.Schema(
