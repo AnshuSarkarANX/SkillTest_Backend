@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+import experienceItemSchema from "./ExperienceItem.js";
 
 
 const userSchema = new mongoose.Schema(
@@ -49,9 +50,11 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    experience: {
-      ExperienceSchema
-  }},
+    experiences: {
+      type: [experienceItemSchema],
+      default: [],
+    },
+  },
   { timestamps: true },
 );
 

@@ -15,7 +15,7 @@ const experienceItemSchema = new Mongoose.Schema(
                 required: true,
             },
             description: {
-                type: String,
+                type: [String],
                 required: true,}
         
     }

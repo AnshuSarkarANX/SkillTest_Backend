@@ -90,7 +90,8 @@ Return ONLY this JSON structure:
   "qualification": "string",
   "specialization": "string",
   "softSkills": ["Communication", "Leadership", "Time Management"],
-  "techSkills": ["React", "Node.js", "MongoDB", "Python"]
+  "techSkills": ["React", "Node.js", "MongoDB", "Python"],
+  "experiences": [{ "companyName": "abc company", "role": "SDE-I", "timePeriod": "1 year 2 months", "description": ["Led a team of developers to deliver a web application.", "Created a new feature." ] }]
 }
 
 IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.`;
