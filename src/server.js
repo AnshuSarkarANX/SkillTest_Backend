@@ -1,5 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const {WebSocketServer,WebSocket} = require("ws"); 
+const https = require("http");
 
 const fs = require("fs");
 const cors = require("cors");
@@ -7,6 +9,9 @@ require("dotenv").config();
 
 
 const app = express();
+const server = https.createServer(app);
+
+
 
 // Middleware
 app.use(express.json());
@@ -48,6 +53,9 @@ app.use("/api/ai", require("./routes/aiRoutes.js"));
 app.use("/api/results", require("./routes/resultRoutes"));
 app.use("/api/user-key", require("./routes/userKeyRoutes"));
 
+// WebSocket Server
+const wss = new WebSocketServer({ server, path:"/interview" });
+
 
 
 const PORT = process.env.PORT || 3000;
@@ -56,3 +64,9 @@ const PORT = process.env.PORT || 3000;
  app.listen(PORT, () => {
   console.log(`HTTPS Server running on port ${PORT}`);
 });
+
+server.listen(8080, () => {
+  console.log("WebSocket Server running on port 8080");
+});
+
+module.exports = { wss };
