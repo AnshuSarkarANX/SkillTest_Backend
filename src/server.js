@@ -52,21 +52,28 @@ app.use("/api/user", userRoutes);
 app.use("/api/ai", require("./routes/aiRoutes.js"));
 app.use("/api/results", require("./routes/resultRoutes"));
 app.use("/api/user-key", require("./routes/userKeyRoutes"));
+const setupSocket = require("./socket");
 
 // WebSocket Server
-const wss = new WebSocketServer({ server, path:"/interview" });
+
+
+const wss = new WebSocketServer({
+  server,
+  path: "/interview",
+});
+ setupSocket(wss);
+
+
+
 
 
 
 const PORT = process.env.PORT || 3000;
 
 
- app.listen(PORT, () => {
-  console.log(`HTTPS Server running on port ${PORT}`);
+ server.listen(PORT, () => {
+  console.log(` Server  & WebSocket running on port ${PORT}`);
 });
 
-server.listen(8080, () => {
-  console.log("WebSocket Server running on port 8080");
-});
 
 module.exports = { wss };
