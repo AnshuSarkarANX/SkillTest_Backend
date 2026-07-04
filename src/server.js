@@ -54,19 +54,13 @@ app.use("/api/results", require("./routes/resultRoutes"));
 app.use("/api/user-key", require("./routes/userKeyRoutes"));
 const setupSocket = require("./socket");
 
-// WebSocket Server
-
-
 const wss = new WebSocketServer({
   server,
   path: "/interview",
 });
  setupSocket(wss);
-
-
-
-
-
+ 
+// WebSocket Server
 
 const PORT = process.env.PORT || 3000;
 
