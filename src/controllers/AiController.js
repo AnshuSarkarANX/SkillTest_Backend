@@ -47,7 +47,7 @@ Example format:{"softSkills":["skill1","skill2"],"techSkills":["skill1","skill2"
     });
   }
 };
-
+// for parsing CV and extracting details
 exports.parseCVController = async (req, res) => {
   try {
     if (!req.file) {
@@ -72,9 +72,7 @@ Extract:
 - fullName: Complete name
 - qualification: One of: "high_school", "college", "bachelors", "masters", "phd"
 - specialization: Field of study
-- softSkills: Array of soft skills
 - techSkills: Array of technical skills
-- experiences: Array of experience objects, each containing:{ companyName, role, timePeriod, description}
 STRICT RULES FOR SKILLS EXTRACTION:
 1. Each skill must be a SINGLE, ATOMIC skill — one word or one short phrase only.
 2. NEVER combine multiple skills into one entry.
@@ -82,12 +80,8 @@ STRICT RULES FOR SKILLS EXTRACTION:
 4. NEVER use parentheses to group related skills under one entry.
 5. If a skill group is mentioned (e.g. "React, Angular, Vue"), split them into separate entries: ["React", "Angular", "Vue"].
 6. Tech skills should be specific tools/languages/frameworks (e.g. "React", "Python", "MongoDB", "Docker").
-7. Soft skills should be specific traits (e.g. "Communication", "Time Management", "Leadership", "Teamwork").
-8. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
-9. ONLY include a skill (in both softSkills and techSkills) if you are confident that at least 30 meaningful questions (mix of MCQ and text-answer) can be generated for that skill. If not, exclude the skill.
-
-Rules For Experiences Extraction:
-1. If the time period is mentioned as "Jan,2026 -  present"  then take  present as todays date = ${monthYear} and calculate the time period from starting month to present month.
+7. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
+8. ONLY include a skill (in both softSkills and techSkills) if you are confident that at least 30 meaningful questions (mix of MCQ and text-answer) can be generated for that skill. If not, exclude the skill.
 
 Return ONLY this JSON structure:
 {
@@ -99,7 +93,7 @@ Return ONLY this JSON structure:
   "experiences": [{ "companyName": "abc company", "role": "SDE-I", "timePeriod": "1 year 2 months", "description": ["Led a team of developers to deliver a web application.", "Created a new feature." ] }]
 }
 
-IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in softSkills and techSkills must be a single standalone skill suitable for generating an individual test.}`;
+IMPORTANT: Response must be valid JSON starting with { and ending with }. Every techSkills must be a single standalone skill suitable for generating an individual test.}`;
 
     // Generate content with PDF - Fixed
     const result = await callGemini([
@@ -153,6 +147,115 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
     });
   }
 };
+
+// for cv parsing and extracting details for interview
+exports.parseCVControllerForInterview = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "No CV file uploaded",
+      });
+    }
+
+    // Read the PDF file
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const base64File = fileBuffer.toString("base64");
+
+    // Delete uploaded file
+    fs.unlinkSync(req.file.path);
+
+    const monthYear =
+      new Date().getMonth() + 1 + " / " + new Date().getFullYear();
+
+    const prompt = `{Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
+
+Extract:
+- fullName: Complete name
+- qualification: One of: "high_school", "college", "bachelors", "masters", "phd"
+- specialization: Field of study
+- additionalSkills: Array of additional skills
+- experiences: Array of experience objects, each containing:{ companyName, role, timePeriod, description}
+- projects: Array of project objects, each containing:{ projectName,techStack, description}
+STRICT RULES FOR SKILLS EXTRACTION:
+1. Each skill must be a SINGLE, ATOMIC skill — one word or one short phrase only.
+2. NEVER combine multiple skills into one entry.
+3. NEVER use separators like "/" or "," or "&" or "and" inside a skill entry.
+4. NEVER use parentheses to group related skills under one entry.
+5. If a skill group is mentioned (e.g. "React, Angular, Vue"), split them into separate entries: ["React", "Angular", "Vue"].
+6. Additional skills should be specific tools/languages/frameworks (e.g. "React", "Python", "MongoDB", "Docker").
+7. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
+8. ONLY include a skill if you are confident some meaningful questions can be generated for that skill. If not, exclude the skill.
+9. Don't include duplicate skills if a skill is present the project techStack don't include them in the skills section
+
+Rules For Experiences Extraction:
+1. If the time period is mentioned as "Jan,2026 -  present"  then take  present as todays date = ${monthYear} and calculate the time period from starting month to present month.
+2. there might be a resume where there is no cv in that case consider only th
+
+Return ONLY this JSON structure:
+{
+  "fullName": "string",
+  "qualification": "string",
+  "specialization": "string",
+  "additionalSkills": ["React", "Node.js", "MongoDB", "Python"],
+  "experiences": [{ "companyName": "abc company", "role": "SDE-I", "timePeriod": "1 year 2 months", "description": ["Led a team of developers to deliver a web application.", "Created a new feature." ] }]
+}
+
+IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in additionalSkills must be a single standalone skill suitable for generating an individual test.}`;
+
+    // Generate content with PDF - Fixed
+    const result = await callGemini([
+      prompt,
+      {
+        inlineData: {
+          data: base64File,
+          mimeType: "application/pdf",
+        },
+      },
+    ]);
+
+    const response = await result.response;
+    let text = response.text().trim();
+    console.log("Raw response:", text); // Debug log
+
+    if (text.includes("```")) {
+      const jsonMatch = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
+      if (jsonMatch) {
+        text = jsonMatch[1].trim();
+      }
+    }
+
+    console.log("Cleaned response:", text); // Debug log
+
+    const parsedCV = JSON.parse(text);
+
+    if (!parsedCV.fullName) {
+      return res.status(400).json({
+        success: false,
+        error: "Could not extract name from CV",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: parsedCV,
+    });
+  } catch (error) {
+    console.error("CV Parsing Error:", error);
+
+    // Clean up file if exists
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to parse CV",
+      details: "Server Error",
+    });
+  }
+};
+
 
 exports.generateCompleteTestWithProgress = async (req, res) => {
   const { skill, level } = req.query;
@@ -814,3 +917,6 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     });
   }
 };
+
+
+
