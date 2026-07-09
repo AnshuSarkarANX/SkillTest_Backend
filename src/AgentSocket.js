@@ -3,7 +3,7 @@ const { DeepgramClient } = require("@deepgram/sdk");
 const fetch = require("cross-fetch");
 const { join } = require("path");
 
-const deepgram = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
+
 
 const agent = async () => {
   let audioBuffer = Buffer.alloc(0);

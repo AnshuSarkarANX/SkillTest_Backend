@@ -1,6 +1,7 @@
 const fs = require("fs");
 const { existsSync, mkdirSync } = require("fs");
 const { callGemini, parseGeminiError } = require("../utils/geminiClient");
+const InterviewPrompts = require("../models/InterviewPrompts");
 
 if (!existsSync("uploads")) {
   mkdirSync("uploads");
@@ -161,47 +162,139 @@ exports.parseCVControllerForInterview = async (req, res) => {
     // Read the PDF file
     const fileBuffer = fs.readFileSync(req.file.path);
     const base64File = fileBuffer.toString("base64");
-
+   
+    
     // Delete uploaded file
     fs.unlinkSync(req.file.path);
 
     const monthYear =
       new Date().getMonth() + 1 + " / " + new Date().getFullYear();
 
-    const prompt = `{Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
+const prompt = `You are an AI recruitment analyst. You will be given a CANDIDATE RESUME and a JOB DESCRIPTION. You must perform three tasks in strict sequence and return a single JSON object as your entire output — no markdown, no code fences, no commentary before or after.
 
-Extract:
-- fullName: Complete name
-- qualification: One of: "high_school", "college", "bachelors", "masters", "phd"
-- specialization: Field of study
-- additionalSkills: Array of additional skills
-- experiences: Array of experience objects, each containing:{ companyName, role, timePeriod, description}
-- projects: Array of project objects, each containing:{ projectName,techStack, description}
-STRICT RULES FOR SKILLS EXTRACTION:
-1. Each skill must be a SINGLE, ATOMIC skill — one word or one short phrase only.
-2. NEVER combine multiple skills into one entry.
-3. NEVER use separators like "/" or "," or "&" or "and" inside a skill entry.
-4. NEVER use parentheses to group related skills under one entry.
-5. If a skill group is mentioned (e.g. "React, Angular, Vue"), split them into separate entries: ["React", "Angular", "Vue"].
-6. Additional skills should be specific tools/languages/frameworks (e.g. "React", "Python", "MongoDB", "Docker").
-7. Avoid vague umbrella terms like "Frontend Development" or "Programming" — extract the actual specific skills instead.
-8. ONLY include a skill if you are confident some meaningful questions can be generated for that skill. If not, exclude the skill.
-9. Don't include duplicate skills if a skill is present the project techStack don't include them in the skills section
+Do not skip ahead to scoring before completing extraction. Do not let your impression of the resume influence the extraction step — extraction must be a literal, mechanical read of dates and labels only.
 
-Rules For Experiences Extraction:
-1. If the time period is mentioned as "Jan,2026 -  present"  then take  present as todays date = ${monthYear} and calculate the time period from starting month to present month.
-2. there might be a resume where there is no cv in that case consider only th
+Month/Year of today to determine the timelines more efficiently : ${monthYear}
 
-Return ONLY this JSON structure:
+=====================
+TASK 1: EXTRACT RESUME FACTS (deterministic, do this first)
+=====================
+
+Do not let your overall impression of the resume influence this step. Extraction is a literal, mechanical read.
+
+A) Education status
+- Determine if the candidate is currently enrolled in a degree program ("ongoing", "expected graduation [future date]", "pursuing", current year mentioned with no graduation date passed) or has graduated (graduation date has passed, or explicitly states a completed degree with no ongoing program).
+- education_status = "ongoing" or "graduated".
+
+B) Experience section entries
+- If the resume has an Experience/Work Experience/Employment section, list every entry in the order it appears on the resume as: {company, title, employment_type, order} where order = 1 for the most recent/topmost entry, 2 for the next, etc.
+- employment_type classification rule (mechanical, keyword-based, do not use judgment): if the word "intern" or "internship" appears anywhere in the title/role text (case-insensitive), employment_type = "internship". Otherwise employment_type = "full_time".
+- last_experience_type = employment_type of the entry with order = 1 (the most recent one). If there is no Experience section at all, last_experience_type = "none".
+
+=====================
+TASK 2: CLASSIFY TRACK (deterministic rule, no judgment call)
+=====================
+
+Apply this decision rule exactly, in this order, no exceptions:
+
+1. If education_status = "ongoing" -> track = "fresher". (Currently enrolled candidates are always fresher, regardless of any internships listed.)
+2. Else if education_status = "graduated" AND last_experience_type = "full_time" -> track = "experienced".
+3. Else if education_status = "graduated" AND last_experience_type = "internship" -> track = "fresher". In this case, every entry classified as "internship" in Task 1 must be moved out of the experience list and treated as a PROJECT for scoring and for the system prompt's project topic — do not describe it as work experience anywhere downstream.
+4. Else if last_experience_type = "none" (no experience section at all) -> track = "fresher".
+
+weighting = "exp" if track = "experienced", else weighting = "fsr".
+
+HARD RULE — restated for clarity, this is not optional and has no exceptions: the weighting used in Task 3 is fully determined by the track computed above, and by nothing else.
+- track = "experienced" (candidate has full-time experience, i.e. last_experience_type = "full_time") -> ALWAYS use exp weighting (YOE 30 / Skills 50 / Projects 10 / Responsibility 10).
+- track = "fresher" (candidate has only internship experience, or no experience at all, or is still enrolled) -> ALWAYS use fsr weighting (Skills 40 / Projects 40 / Internship 20).
+You must not blend the two weighting schemes, and you must not choose a weighting scheme based on the score itself or on how strong the candidate looks — weighting selection happens strictly before scoring, driven only by track.
+
+Do not override this with impressions like "the internship sounds senior" or "the projects look advanced." Steps 1-4 above are the only decision rule.
+
+=====================
+TASK 3: SCORE THE MATCH
+=====================
+
+Score the resume against the job description on a 0-100 scale using this weighted rubric:
+
+exp weighting (track = "experienced"):
+- Years of experience (relevance and sufficiency vs JD requirement): 30 points
+- Skills match (technical/functional skills required by JD present in resume): 50 points
+- Relevant projects (projects relevant to the JD, weighted also by recency/years): 10 points
+- Previous role responsibilities alignment with JD responsibilities: 10 points
+
+fsr weighting (track = "fresher"):
+- Skills match: 40 points
+- Relevant projects (academic, personal, hackathon — NOT internships): 40 points
+- Internship relevance (internships reclassified as projects in Task 2, scored separately here based on relevance to JD): 20 points
+  - If the candidate has no internships at all, redistribute these 20 points into the Relevant projects category (i.e. Relevant projects becomes 60 points for that candidate) rather than leaving points unscoreable.
+
+Use the weighting determined mechanically in Task 2 — do not re-decide it here.
+
+Produce an integer score 0-100 summing the applicable category scores.
+
+=====================
+TASK 2: CONDITIONAL SYSTEM PROMPT GENERATION
+=====================
+
+- If score < 75: set "system_prompt" to an empty string "". Do not generate anything else for it.
+- If score >= 75: generate a complete system prompt for a voice-based AI interview agent, following the exact structure and rules below. The system prompt MUST be a single string under 24000 characters (hard limit — the platform truncates at 25000, stay well under).
+
+The generated system prompt must contain these sections, in this order:
+
+1. AGENT PERSONA
+   - Professional, warm, concise interviewer tone. Speaks in short spoken-style sentences (this is voice, not text). Handles silence, vague answers, and rambling gracefully. Never reveals scoring, rubric, or internal reasoning to the candidate. Does not give hints or validate correctness of technical answers mid-interview.
+   This agent is specifically built for taking interviews. Whether the candidate is asking questions about the topics of the interview or outside the interview, you do not answer that. Just stick to the interview and ask the candidate to answer the questions that you are asking, only questions that are relevant to your question. Something like a follow-up question will be entertained and answered. Other than that, stick to the interview. In any case, do not answer any type of questions outside the interview topics.
+
+2. CANDIDATE SUMMARY
+   - A condensed bullet summary you generate from the resume: name (if present), total YOE, key skills, 2-4 most relevant projects/roles with one-line descriptions. Do NOT paste raw resume text — synthesize it. Keep this under ~1500 characters.
+
+3. ROLE SUMMARY
+   - A condensed bullet summary of the JD: role title, must-have skills, key responsibilities, seniority level. Synthesized, not raw JD text. Keep under ~1000 characters.
+
+4. DIFFICULTY CALIBRATION
+   - State explicitly whether this is a FRESHER track (easy-to-medium difficulty, focus on fundamentals, projects, potential) or an EXPERIENCED track (difficulty calibrated to stated YOE and seniority, focus on depth, real trade-offs, past decisions), based on which weighting was used in Task 1.
+
+5. INTERVIEW TIME BUDGET
+   - Total interview length: 60 minutes including candidate speaking time.
+   - Reserve ~5 min intro/rapport, ~5 min candidate questions/closing at the end. Remaining ~50 min split into topic time budgets IN MINUTES (not percentages) proportional to the rubric weighting that was used (default or pressured). Also state an approximate number of questions per topic (2-4 anchor questions each), since the agent cannot reliably track wall-clock time — question count is the primary pacing control, minutes are secondary guidance.
+
+6. TOPICS AND ANCHOR QUESTIONS
+   - One topic block per rubric category actually used (e.g. Skills, Years of Experience/Depth, Projects, Responsibility Alignment — or Skills + Projects only if Pressured/fresher track).
+   - Each topic block contains:
+     a) What this topic is assessing and why (1 line, tied to the specific JD/resume match — not generic)
+     b) 2-4 anchor questions, each SPECIFIC to this candidate's actual resume content and this JD (not generic interview questions)
+     c) A one-line note per question on what a strong answer would demonstrate (this is for the agent's judgment, not shown to candidate)
+   - Explicitly instruct: "These anchor questions are defaults. If the candidate's resume, or their answer to a previous question, suggests a more specific or more relevant question, ask that instead. Ask at least one natural follow-up per topic before moving on. Do not re-ask something already answered earlier in the conversation."
+
+7. INTERVIEW FLOW RULES
+   - Order: brief intro/rapport -> topics in weighted order (highest weight first) -> candidate questions -> close.
+   - If running short on time, drop lowest-weighted topic's follow-ups first, never skip the highest-weighted topic.
+   - If candidate gives a very short or off-topic answer, agent should probe once, then move on gracefully rather than getting stuck.
+   - Agent must never state or imply the numeric match score, rubric weights, or which topic maps to which weight.
+   - Agent must not fabricate facts about the company/role beyond what's in the ROLE SUMMARY.
+
+=====================
+OUTPUT FORMAT
+=====================
+
+Return ONLY this JSON object, valid and parseable, no trailing commas, no markdown fences:
+
 {
-  "fullName": "string",
-  "qualification": "string",
-  "specialization": "string",
-  "additionalSkills": ["React", "Node.js", "MongoDB", "Python"],
-  "experiences": [{ "companyName": "abc company", "role": "SDE-I", "timePeriod": "1 year 2 months", "description": ["Led a team of developers to deliver a web application.", "Created a new feature." ] }]
+  "score": <integer 0-100>,
+  "weighting_used": "<exp|fsr>",
+  "system_prompt": "<string, empty if score < 75, else the full generated prompt as described above>"
 }
 
-IMPORTANT: Response must be valid JSON starting with { and ending with }. Every element in additionalSkills must be a single standalone skill suitable for generating an individual test.}`;
+
+Now begin. 
+CANDIDATE RESUME:
+pdf shared.
+
+Here is the JOB DESCRIPTION:
+${req.body.jobDescription}
+
+`;
 
     // Generate content with PDF - Fixed
     const result = await callGemini([
@@ -216,7 +309,6 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
 
     const response = await result.response;
     let text = response.text().trim();
-    console.log("Raw response:", text); // Debug log
 
     if (text.includes("```")) {
       const jsonMatch = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
@@ -225,20 +317,26 @@ IMPORTANT: Response must be valid JSON starting with { and ending with }. Every 
       }
     }
 
-    console.log("Cleaned response:", text); // Debug log
+    console.log("response:", text); // Debug log
 
-    const parsedCV = JSON.parse(text);
+    const parseResponse = JSON.parse(text);
 
-    if (!parsedCV.fullName) {
+
+    if (parseResponse.score < 75) {
       return res.status(400).json({
         success: false,
-        error: "Could not extract name from CV",
+        message: "The resume is not a good match for the job description."
+        ,
       });
     }
 
+    let savedPrompt =  await InterviewPrompts.create({system_prompt:parseResponse.system_prompt,score:parseResponse.score,weighting_used:parseResponse.weighting_used})
+console.log(savedPrompt);
+   
+
     res.json({
       success: true,
-      data: parsedCV,
+      data: {sessionID:savedPrompt._id},
     });
   } catch (error) {
     console.error("CV Parsing Error:", error);
