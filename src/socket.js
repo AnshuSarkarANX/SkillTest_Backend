@@ -10,8 +10,10 @@ module.exports = function setupSocket(wss) {
   wss.on("connection", (ws) => {
     console.log("Client connected");
     let dgConnection = null;
+    let endingInterview = false;
     let settingsApplied = false;
     let audioBuffer = Buffer.alloc(0);
+    let dgReady= false;
 
     ws.on("message", async (message, isBinary) => {
       // Binary = mic audio → forward straight to Deepgram
@@ -27,6 +29,7 @@ module.exports = function setupSocket(wss) {
       } catch {
         return; // not valid JSON, ignore
       }
+      
 
       if (parsedMessage.type === "sessionId") {
         const sessionId = parsedMessage.sessionId;
@@ -38,6 +41,7 @@ module.exports = function setupSocket(wss) {
         dgConnection = await deepgram.agent.v1.connect();
         dgConnection.on("open", () => {
           console.log("Deepgram connection opened");
+          dgReady = true;
         });
         let keepAliveInterval = null;
         function clearKeepAlive() {
@@ -74,7 +78,7 @@ module.exports = function setupSocket(wss) {
               },
             });
             keepAliveInterval = setInterval(() => {
-              if (dgConnection?.isOpen?.() ?? true) {
+              if (dgReady) {
                 dgConnection.sendKeepAlive({ type: "KeepAlive" });
               } else {
                 clearKeepAlive();
@@ -82,7 +86,7 @@ module.exports = function setupSocket(wss) {
             }, 8000);
           }
           if (data.type === "Error" || data.type === "Warning") {
-            console.error(
+            console.log(
               "🔴 Deepgram",
               data.type,
               "-",
@@ -90,6 +94,7 @@ module.exports = function setupSocket(wss) {
               "-",
               data.description,
             );
+            clearKeepAlive();
           }
           if (data.type === "SettingsApplied") {
             console.log("Deepgram agent configured, ready to stream audio");
@@ -100,6 +105,24 @@ module.exports = function setupSocket(wss) {
             console.log(data);
             ws.send(JSON.stringify({ type: "transcript", data }));
           }
+          if (data.type === "InjectionRefused") {
+            console.warn("Injection refused, retrying...");
+            // Optionally retry after a short delay
+            setTimeout(() => {
+              dgConnection?.sendInjectAgentMessage({
+                type: "InjectAgentMessage",
+                message: "Closing the interview now",
+                behavior: "queue",
+              });
+            }, 500);
+          }
+
+          
+            if (data.type === "AgentAudioDone" && endingInterview) {
+              ws.send(JSON.stringify({type:"closeSocket"}))
+              // dgConnection.close();
+            }
+          
 
           if (data.type === "UserStartedSpeaking") {
             audioBuffer = Buffer.alloc(0); // barge-in: clear queued agent audio
@@ -111,19 +134,25 @@ module.exports = function setupSocket(wss) {
             ws.send(wavChunk); // send straight through to browser for playback
           }
         });
+        dgConnection.on("close", () => { (console.log("Deepgram connection closed"), dgReady = false);
+          clearKeepAlive();
+        }
+         
 
-        dgConnection.on(
-          "error",
-          (err) => console.error("Deepgram error:", err),
-          clearKeepAlive(),
-        );
-        dgConnection.on(
-          "close",
-          () => console.log("Deepgram connection closed"),
-          clearKeepAlive(),
         );
         dgConnection.connect(); // <-- actually opens the socket
         await dgConnection.waitForOpen();
+      }
+      if (parsedMessage.type === "END_INTERVIEW") {
+        endingInterview = true;
+        dgConnection?.sendInjectAgentMessage(
+          {
+            type: "InjectAgentMessage",
+            message: "Closing the interview now",
+            behavior: "queue",
+          },
+        );
+        
       }
     });
     ws.on("close", () => {

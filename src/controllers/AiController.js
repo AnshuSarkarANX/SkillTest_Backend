@@ -68,7 +68,6 @@ exports.parseCVController = async (req, res) => {
     const monthYear = new Date().getMonth() + 1 + " / " + new Date().getFullYear();
 
     const prompt = `{Analyze this CV/resume PDF and extract the following information. Return ONLY a valid JSON object without any markdown formatting, code blocks, or additional text.
-
 Extract:
 - fullName: Complete name
 - qualification: One of: "high_school", "college", "bachelors", "masters", "phd"
@@ -323,20 +322,22 @@ ${req.body.jobDescription}
 
 
     if (parseResponse.score < 75) {
-      return res.status(400).json({
+      return res.json({
         success: false,
-        message: "The resume is not a good match for the job description."
-        ,
+        message: "The resume is not a good match for the job description.",
       });
     }
 
-    let savedPrompt =  await InterviewPrompts.create({system_prompt:parseResponse.system_prompt,score:parseResponse.score,weighting_used:parseResponse.weighting_used})
-console.log(savedPrompt);
-   
+    let savedPrompt = await InterviewPrompts.create({
+      system_prompt: parseResponse.system_prompt,
+      score: parseResponse.score,
+      weighting_used: parseResponse.weighting_used,
+    });
+    console.log(savedPrompt);
 
     res.json({
       success: true,
-      data: {sessionID:savedPrompt._id},
+      sessionID: savedPrompt._id,
     });
   } catch (error) {
     console.error("CV Parsing Error:", error);
