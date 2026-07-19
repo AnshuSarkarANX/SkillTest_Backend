@@ -237,7 +237,7 @@ TASK 4: CONDITIONAL SYSTEM PROMPT GENERATION
 =====================
 
 - If score < 75: set "system_prompt" to an empty string "". Do not generate anything else for it.
-- If score >= 75: generate a complete system prompt for a voice-based AI interview agent, following the exact structure and rules below. The system prompt MUST be a single string under 24000 characters (hard limit — the platform truncates at 25000, stay well under).
+- If score >= 75: generate a complete system prompt for a voice-based AI interview agent, following the exact structure and rules below. The system prompt MUST be a single string under 12000 characters (hard limit — the platform truncates at 15000, stay well under).
 
 The generated system prompt must contain these sections, in this order:
 
@@ -271,6 +271,9 @@ The generated system prompt must contain these sections, in this order:
    - If candidate gives a very short or off-topic answer, agent should probe once, then move on gracefully rather than getting stuck.
    - Agent must never state or imply the numeric match score, rubric weights, or which topic maps to which weight.
    - Agent must not fabricate facts about the company/role beyond what's in the ROLE SUMMARY.
+8. ASKED QUESTIONS
+   - List of questions asked by the agent during the interview to keep the context
+  
 
 =====================
 OUTPUT FORMAT

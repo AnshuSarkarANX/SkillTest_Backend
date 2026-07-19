@@ -9,51 +9,35 @@ const deepgram = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
 module.exports = function setupSocket(wss) {
   wss.on("connection", (ws) => {
     console.log("Client connected");
-    let dgConnection = null;
-    let endingInterview = false;
-    let settingsApplied = false;
-    let audioBuffer = Buffer.alloc(0);
-    let dgReady= false;
+   let dgConnection = null;
+   let endingInterview = false;
+   let deliberateClose = false; // true only when WE intentionally close Deepgram
+   let settingsApplied = false;
+   let audioBuffer = Buffer.alloc(0);
+   let keepAliveInterval = null;
+   let dgReconnectAttempts = 0;
+   let audioBufferQueue = [];
+   let currentSessionId = null;
+   let currentSystemPrompt = null;
 
-    ws.on("message", async (message, isBinary) => {
-      // Binary = mic audio → forward straight to Deepgram
-      if (isBinary) {
-        if (dgConnection && settingsApplied) {
-          dgConnection.sendMedia(message);
-        }
-        return;
+    function clearKeepAlive() {
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
       }
-      let parsedMessage;
-      try {
-        parsedMessage = JSON.parse(message);
-      } catch {
-        return; // not valid JSON, ignore
-      }
-      
+    }
+   async function connectToDeepgram(sessionId, systemPrompt,agentConvo = []) { 
+    connection = await deepgram.agent.v1.connect();
+    connection.on("open", () => {
+      console.log("Deepgram connection opened");
+      dgReady = true;
+      dgReconnectAttempts = 0;
+    });
 
-      if (parsedMessage.type === "sessionId") {
-        const sessionId = parsedMessage.sessionId;
-        console.log("Received sessionId:", sessionId);
-        const promptDoc = await InterviewPrompts.findById(sessionId);
-        const systemPrompt =
-          promptDoc?.system_prompt || "You are a friendly AI assistant.";
-
-        dgConnection = await deepgram.agent.v1.connect();
-        dgConnection.on("open", () => {
-          console.log("Deepgram connection opened");
-          dgReady = true;
-        });
-        let keepAliveInterval = null;
-        function clearKeepAlive() {
-          if (keepAliveInterval) {
-            clearInterval(keepAliveInterval);
-            keepAliveInterval = null;
-          }
-        }
-        dgConnection.on("message", async (data) => {
+    connection.on("message", async (data) => {
           if (data.type === "Welcome") {
             console.log("Welcome from Deepgram, sending Settings...");
-            dgConnection.sendSettings({
+            connection.sendSettings({
               type: "Settings",
               audio: {
                 input: { encoding: "linear16", sample_rate: 24000 },
@@ -79,7 +63,7 @@ module.exports = function setupSocket(wss) {
             });
             keepAliveInterval = setInterval(() => {
               if (dgReady) {
-                dgConnection.sendKeepAlive({ type: "KeepAlive" });
+                connection.sendKeepAlive({ type: "KeepAlive" });
               } else {
                 clearKeepAlive();
               }
@@ -99,6 +83,19 @@ module.exports = function setupSocket(wss) {
           if (data.type === "SettingsApplied") {
             console.log("Deepgram agent configured, ready to stream audio");
             settingsApplied = true;
+            while (audioBufferQueue.length > 0) {
+              connection.sendMedia(audioBufferQueue.shift());
+            }
+            if(agentConvo.length > 0){
+              connection.sendUpdatePrompt({type: "UpdatePrompt", prompt: `${agentConvo.join("\n")}`});
+              console.log("conversation prev-", agentConvo.join("\n"));
+            }
+             
+          }
+          if (data.type === "PromptUpdated") {
+            console.log(
+              "Prompt updated successfully — new prompt is now active.",
+            );
           }
           if (data.type === "ConversationText") {
             // log transcript
@@ -109,7 +106,7 @@ module.exports = function setupSocket(wss) {
             console.warn("Injection refused, retrying...");
             // Optionally retry after a short delay
             setTimeout(() => {
-              dgConnection?.sendInjectAgentMessage({
+              connection?.sendInjectAgentMessage({
                 type: "InjectAgentMessage",
                 message: "Closing the interview now",
                 behavior: "queue",
@@ -117,12 +114,10 @@ module.exports = function setupSocket(wss) {
             }, 500);
           }
 
-          
-            if (data.type === "AgentAudioDone" && endingInterview) {
-              ws.send(JSON.stringify({type:"closeSocket"}))
-              // dgConnection.close();
-            }
-          
+          if (data.type === "AgentAudioDone" && endingInterview) {
+            ws.send(JSON.stringify({ type: "closeSocket" }));
+            // connection.close();
+          }
 
           if (data.type === "UserStartedSpeaking") {
             audioBuffer = Buffer.alloc(0); // barge-in: clear queued agent audio
@@ -134,28 +129,106 @@ module.exports = function setupSocket(wss) {
             ws.send(wavChunk); // send straight through to browser for playback
           }
         });
-        dgConnection.on("close", () => { (console.log("Deepgram connection closed"), dgReady = false);
-          clearKeepAlive();
-        }
-         
 
+
+        connection.on("close", () => {
+          console.log("Deepgram connection closed"); 
+          dgReady = false;
+          settingsApplied = false;
+          clearKeepAlive();
+           if (!deliberateClose && ws.readyState === ws.OPEN) {
+             attemptDeepgramReconnect();
+           }
+
+        });
+
+        connection.on("error", (err) => {
+          console.error("Deepgram error:", err);
+        });
+        connection.connect(); // <-- actually opens the socket
+        await connection.waitForOpen();
+
+        return connection;
+   }
+
+    function attemptDeepgramReconnect() {
+if (dgReconnectAttempts >= 5) {
+  console.error("Max Deepgram reconnect attempts reached");
+  ws.send(
+    JSON.stringify({
+      type: "fatal_error",
+      message: "Could not reconnect to voice agent",
+    }),
+  );
+  return;
+
+  
+}
+
+const delay = Math.min(10000, 1000 * 2 ** dgReconnectAttempts);
+dgReconnectAttempts += 1;
+console.log(
+  `Reconnecting to Deepgram in ${delay}ms (attempt ${dgReconnectAttempts})`,
+);
+ setTimeout(async () => {
+   try {
+     dgConnection = await connectToDeepgram(
+       currentSessionId,
+       currentSystemPrompt,
+     );
+   } catch (err) {
+     console.error("Reconnect attempt failed:", err);
+     attemptDeepgramReconnect(); // try again
+   }
+ }, delay);
+
+    }
+    ws.on("message", async (message, isBinary) => {
+      // Binary = mic audio → forward straight to Deepgram
+      if (isBinary) {
+        if (dgConnection && settingsApplied) {
+          dgConnection.sendMedia(message);
+        } else {
+          audioBufferQueue.push(message); // buffer until reconnected
+          if (audioBufferQueue.length > 200) audioBufferQueue.shift(); // cap memory
+        }
+        return;
+      }
+      let parsedMessage;
+      try {
+        parsedMessage = JSON.parse(message);
+      } catch {
+        return; // not valid JSON, ignore
+      }
+
+      if (parsedMessage.type === "sessionId") {
+        const sessionId = parsedMessage.sessionId;
+        
+        const promptDoc = await InterviewPrompts.findById(sessionId);
+        const systemPrompt =
+          promptDoc?.system_prompt || "You are a friendly AI assistant.";
+          currentSessionId = sessionId;
+          currentSystemPrompt = systemPrompt;
+         let agentConvo = parsedMessage?.conversations
+
+        dgConnection = await connectToDeepgram(
+          sessionId,
+          systemPrompt,
+          agentConvo,
         );
-        dgConnection.connect(); // <-- actually opens the socket
-        await dgConnection.waitForOpen();
       }
       if (parsedMessage.type === "END_INTERVIEW") {
         endingInterview = true;
-        dgConnection?.sendInjectAgentMessage(
-          {
-            type: "InjectAgentMessage",
-            message: "Closing the interview now",
-            behavior: "queue",
-          },
-        );
-        
+        dgConnection?.sendInjectAgentMessage({
+          type: "InjectAgentMessage",
+          message: "Closing the interview now",
+          behavior: "queue",
+        });
       }
     });
     ws.on("close", () => {
+      deliberateClose = true; 
+      clearKeepAlive();
       dgConnection?.close();
       console.log("Client disconnected");
     });
