@@ -51,8 +51,8 @@ module.exports = function setupSocket(wss) {
                 language: "en",
                 listen: { provider: { type: "deepgram", model: "nova-3" } },
                 think: {
-                  provider: { type: "open_ai", model: "gpt-4o-mini" },
-                  prompt: systemPrompt,
+                  provider: { type: "open_ai", model: "gpt-5.4-mini" },
+                  prompt: systemPrompt + agentConvo.join("\n"),
                 },
                 speak: {
                   provider: { type: "deepgram", model: "aura-2-thalia-en" },
@@ -86,10 +86,7 @@ module.exports = function setupSocket(wss) {
             while (audioBufferQueue.length > 0) {
               connection.sendMedia(audioBufferQueue.shift());
             }
-            if(agentConvo.length > 0){
-              connection.sendUpdatePrompt({type: "UpdatePrompt", prompt: `${agentConvo.join("\n")}`});
-              console.log("conversation prev-", agentConvo.join("\n"));
-            }
+           
              
           }
           if (data.type === "PromptUpdated") {
